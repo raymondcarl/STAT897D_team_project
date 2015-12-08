@@ -5,10 +5,6 @@ date: "6 December 2015"
 output: pdf_document
 ---
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
 Load & Prepare Data
 ```{r, echo=FALSE, message=FALSE}
 
@@ -60,12 +56,13 @@ data.test.std <- data.frame(x.test.std)
 ```
 
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
-
+<h4>
+Develop a classification model for the DONR Variable
+</h4>
 
 
 Logistic Regression
-
+** This is just a copy of the example guide that came with the project**
 ```{r}
 
 model.log1 <- glm(donr ~ reg1 + reg2 + reg3 + reg4 + home + chld + hinc + I(hinc^2) + genf + wrat + avhv + incm + inca + plow + npro + tgif + lgif + rgif + tdon + tlag + agif, data.train.std.c, family=binomial("logit"))
@@ -122,5 +119,37 @@ table(chat.test)
 
 
 
+<h4>
+Prediction Model for the DAMT Variable
+</h4>
+
+Note: The first run did not use the transformed variables.
+```{r}
+library(leaps)
+
+# Backward selection model
+# part and ID variables are excluded
+regfit.bwd = regsubsets(damt~. -part -ID, data=data.train, nvmax=19, method = "backward")
+summary(regfit.bwd)
+
+#Create text matrix
+test.mat=model.matrix(damt~. -part -ID, data=data.train)
+
+
+
+
+#Run a for loop to get the cross validation error
+val.errors=rep(NA,19) #create a numbered list of x NA's
+for(i in 1:19){
+  coefi=coef(regfit.bwd,id=i)
+  pred=test.mat[,names(coefi)]%*%coefi
+  val.errors[i]=mean((data.train$damt-pred)^2)
+}
+
+# This is the test MSE.  It shows that the one with 19 variables has the lowest MSE, but it kind of seems like we would be no worse off by choosing the model with only 9 variables.
+val.errors
+which.min(val.errors)
+
+```
 
 
