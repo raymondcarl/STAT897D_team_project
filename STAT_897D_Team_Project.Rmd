@@ -5,8 +5,17 @@ date: "6 December 2015"
 output: pdf_document
 ---
 
-Load & Prepare Data
+
+
+
+
 ```{r, echo=FALSE, message=FALSE}
+# Chunk Description:
+# 1) Load Required Packages
+# 2) Load and Prepare Data
+
+library(dplyr)
+library(leaps)
 
 #Read in data from CSV file
 charity <- read.csv("/Users/raymondcarl/Dropbox/STAT 897D Team Project/charity.csv")
@@ -54,6 +63,18 @@ data.test.std <- data.frame(x.test.std)
 
 
 ```
+
+
+Hi Mark, the log transformations are here:
+```{r}
+
+new_col_labels <- paste(names(data.train[,c(11:13,15:21)]), "_log")
+transformation_df <- log(data.train[,c(11:13,15:21)])
+names(transformation_df) <- new_col_labels
+data.train<-data.frame(data.train, transformation_df)
+
+```
+
 
 
 <h4>
@@ -125,22 +146,19 @@ Prediction Model for the DAMT Variable
 
 Note: The first run did not use the transformed variables.
 ```{r}
-library(leaps)
+
 
 # Backward selection model
 # part and ID variables are excluded
-regfit.bwd = regsubsets(damt~. -part -ID, data=data.train, nvmax=19, method = "backward")
+regfit.bwd = regsubsets(damt~. -part -ID, data=data.train, nvmax=30, method = "backward")
 summary(regfit.bwd)
 
 #Create text matrix
 test.mat=model.matrix(damt~. -part -ID, data=data.train)
 
-
-
-
 #Run a for loop to get the cross validation error
-val.errors=rep(NA,19) #create a numbered list of x NA's
-for(i in 1:19){
+val.errors=rep(NA,30) #create a numbered list of x NA's
+for(i in 1:30){
   coefi=coef(regfit.bwd,id=i)
   pred=test.mat[,names(coefi)]%*%coefi
   val.errors[i]=mean((data.train$damt-pred)^2)
@@ -149,6 +167,9 @@ for(i in 1:19){
 # This is the test MSE.  It shows that the one with 19 variables has the lowest MSE, but it kind of seems like we would be no worse off by choosing the model with only 9 variables.
 val.errors
 which.min(val.errors)
+
+coef(regfit.bwd,11)
+
 
 ```
 
