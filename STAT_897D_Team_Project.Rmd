@@ -6,26 +6,54 @@ output: pdf_document
 ---
 
 
+```{r, echo=FALSE,message=FALSE}
+# Load required packages
+
+library(dplyr)
+library(leaps)
+library(glmnet)
+library(splines)
+library(gam)
+
+
+```
 
 
 
 ```{r, echo=FALSE, message=FALSE}
-# Chunk Description:
-# 1) Load Required Packages
-# 2) Load and Prepare Data
-
-library(dplyr)
-library(leaps)
-
 #Read in data from CSV file
 charity <- read.csv("/Users/raymondcarl/Dropbox/STAT 897D Team Project/charity.csv")
 
-#Create log transformation of avhv variable
+```
+
+
+
+```{r, echo=FALSE,message=FALSE}
+# Helper functions
+
+# Make predictions from regsusets object
+# https://github.com/yufree/democode/blob/master/rml/predict.regsubsets.R
+predict.regsubsets = function(object, newdata, id, ...) {
+        form  <-  as.formula(~.)
+        mat  <-  model.matrix(form, newdata)
+        coefi  <-  coef(object, id)
+        xvars  <-  names(coefi)
+        mat[, xvars] %*% coefi
+}
+
+#Center the variables
+#http://gastonsanchez.com/blog/how-to/2014/01/15/Center-data-in-R.html
+center_apply <- function(x) {
+    apply(x, 2, function(y) y - mean(y))
+}
+
+
+```
+
+example code for vectorization
+```{r}
 charity.t <- charity
 charity.t$avhv <- log(charity.t$avhv)
-
-#Create training data set
-#note: observations are pre-marked for training and validation
 data.train <- charity.t[charity$part=="train",]
 x.train <- data.train[,2:21]
 c.train <- data.train[,22] # donr
@@ -33,7 +61,13 @@ n.train.c <- length(c.train) # 3984
 y.train <- data.train[c.train==1,23] # damt for observations with donr=1
 n.train.y <- length(y.train) # 1995
 
-#Create validation data set
+data.train <- charity.t[charity$part=="train",]
+x.train <- data.train[,2:21]
+c.train <- data.train[,22] # donr
+n.train.c <- length(c.train) # 3984
+y.train <- data.train[c.train==1,23] # damt for observations with donr=1
+n.train.y <- length(y.train) # 1995
+
 data.valid <- charity.t[charity$part=="valid",]
 x.valid <- data.valid[,2:21]
 c.valid <- data.valid[,22] # donr
@@ -41,7 +75,6 @@ n.valid.c <- length(c.valid) # 2018
 y.valid <- data.valid[c.valid==1,23] # damt for observations with donr=1
 n.valid.y <- length(y.valid) # 999
 
-#Create test data
 data.test <- charity.t[charity$part=="test",]
 n.test <- dim(data.test)[1] # 2007
 x.test <- data.test[,2:21]
@@ -61,19 +94,41 @@ data.valid.std.y <- data.frame(x.valid.std[c.valid==1,], damt=y.valid) # to pred
 x.test.std <- t((t(x.test)-x.train.mean)/x.train.sd) # standardize using training mean and sd
 data.test.std <- data.frame(x.test.std)
 
+```
+
+
+
+
+```{r}
+#data transformations (ln and ^2)
+
+transformation_df <- charity[,c(11:13,15:21)]
+
+#log transformation
+names(transformation_df) <- paste(names(charity[,c(11:13,15:21)]), "_log")
+charity<-data.frame(charity, log(transformation_df))
+
+#squared transformation
+names(transformation_df) <- paste(names(charity[,c(11:13,15:21)]), "_sq")
+
+transformation_centered_df <- center_apply(transformation_df)
+charity<-data.frame(charity, transformation_centered_df^2)
+
+names(transformation_df) <- paste(names(charity[,c(11:13,15:21)]), "_cube")
+charity<-data.frame(charity, transformation_centered_df^3)
 
 ```
 
 
-Hi Mark, the log transformations are here:
 ```{r}
 
-new_col_labels <- paste(names(data.train[,c(11:13,15:21)]), "_log")
-transformation_df <- log(data.train[,c(11:13,15:21)])
-names(transformation_df) <- new_col_labels
-data.train<-data.frame(data.train, transformation_df)
+
+names(charity[,1:27])
+
 
 ```
+
+
 
 
 
@@ -145,32 +200,92 @@ Prediction Model for the DAMT Variable
 </h4>
 
 Note: The first run did not use the transformed variables.
+
+
+Linear Regression Variable Selection
 ```{r}
 
+nvmax_var <- 50
+
+training_data <- filter(charity,part=="train" & donr==1) %>% select(.,-donr)
+validation_data <- filter(charity,part=="valid" & donr==1) %>% select(.,-donr)
 
 # Backward selection model
 # part and ID variables are excluded
-regfit.bwd = regsubsets(damt~. -part -ID, data=data.train, nvmax=30, method = "backward")
-summary(regfit.bwd)
+regfit.bwd = regsubsets(damt~. -part -ID, data = training_data, nvmax = nvmax_var, method = "backward")
 
-#Create text matrix
-test.mat=model.matrix(damt~. -part -ID, data=data.train)
+#Test matrix
+test.mat=model.matrix(damt~. -part -ID, data=training_data)
 
 #Run a for loop to get the cross validation error
-val.errors=rep(NA,30) #create a numbered list of x NA's
-for(i in 1:30){
+val.errors=rep(NA,nvmax_var) #create a numbered list of x NA's
+
+for(i in 1:nvmax_var){
   coefi=coef(regfit.bwd,id=i)
   pred=test.mat[,names(coefi)]%*%coefi
-  val.errors[i]=mean((data.train$damt-pred)^2)
+  val.errors[i]=mean( (training_data$damt - pred)^2 )
 }
 
-# This is the test MSE.  It shows that the one with 19 variables has the lowest MSE, but it kind of seems like we would be no worse off by choosing the model with only 9 variables.
 val.errors
-which.min(val.errors)
+best_model <-which.min(val.errors)
 
-coef(regfit.bwd,11)
+coef(regfit.bwd,best_model)
 
+mean((predict.regsubsets(regfit.bwd, validation_data,best_model) - validation_data$damt)^2)
 
 ```
 
+Lasso and Ridge Regression
+
+Vectorize variables for ridge regression and lasso:
+
+```{r}
+x=model.matrix(damt~ reg1 + reg2 + reg3 + reg4 + home + chld + hinc + genf + wrat + avhv + incm + inca + plow + npro + tgif + lgif + rgif + tdon + tlag + agif, data=data.train.std.y)
+y=data.train.std.y$damt
+x.valid=model.matrix(damt~ reg1 + reg2 + reg3 + reg4 + home + chld + hinc + genf + wrat + avhv + incm + inca + plow + npro + tgif + lgif + rgif + tdon + tlag + agif, data=data.valid.std.y)
+y.valid=data.valid.std.y$damt
+
+grid=10^seq(10,-2,length=100)
+
+```
+
+Ridge Regression
+```{r}
+
+ridge.mod=glmnet(x,y,alpha=0,lambda=grid)
+cv.out=cv.glmnet(x,y,alpha=0)
+bestlam=cv.out$lambda.min
+bestlam
+ridge.pred=predict(ridge.mod,s=bestlam,newx=x.valid)
+mean((ridge.pred-y.valid)^2)
+
+```
+
+Lasso 
+```{r}
+
+lasso.mod=glmnet(x,y,alpha=1,lambda=grid)
+cv.out=cv.glmnet(x,y,alpha=1)
+bestlam=cv.out$lambda.min
+bestlam
+lasso.pred=predict(lasso.mod,s=bestlam,newx=x.valid)
+mean((lasso.pred-y.valid)^2)
+
+```
+
+Splines
+```{r}
+
+
+fit <- lm(damt~ reg3 + reg4 + bs(incm._log,knots=c(2,2.3,2.7)) + bs(agif._log,knots=c(2,2.3,2.7)),data=training_data)
+
+pred=predict(fit, newdata=validation_data,se=T)
+mean((pred$fit-y.valid)^2)
+
+plot(age,wage,col="gray")
+lines(age.grid,pred$fit,lwd=2)
+lines(age.grid,pred$fit+2*pred$se ,lty="dashed")
+lines(age.grid,pred$fit-2*pred$se ,lty="dashed") 
+
+```
 
