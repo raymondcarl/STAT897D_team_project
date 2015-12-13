@@ -1,5 +1,27 @@
 charity <- read.csv("/Users/raymondcarl/Dropbox/STAT 897D Team Project/charity.csv")
 
+
+# Helper functions
+
+# Make predictions from regsusets object
+# https://github.com/yufree/democode/blob/master/rml/predict.regsubsets.R
+predict.regsubsets = function(object, newdata, id, ...) {
+  form  <-  as.formula(~.)
+  mat  <-  model.matrix(form, newdata)
+  coefi  <-  coef(object, id)
+  xvars  <-  names(coefi)
+  mat[, xvars] %*% coefi
+}
+
+#Center the variables
+#http://gastonsanchez.com/blog/how-to/2014/01/15/Center-data-in-R.html
+center_apply <- function(x) {
+  apply(x, 2, function(y) y - mean(y))
+}
+
+
+
+
 # predictor transformations
 
 charity.t <- charity
@@ -54,3 +76,6 @@ data.valid.std.y <- data.frame(x.valid.std[c.valid==1,], damt=y.valid) # to pred
 
 x.test.std <- t((t(x.test)-x.train.mean)/x.train.sd) # standardize using training mean and sd
 data.test.std <- data.frame(x.test.std)
+
+
+
