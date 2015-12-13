@@ -1,0 +1,113 @@
+---
+title: "STAT 897D Team Project"
+author: "Raymond Carl"
+date: "6 December 2015"
+output: pdf_document
+---
+
+
+```{r, echo=FALSE,message=FALSE}
+# Load required packages
+
+library(dplyr)
+library(leaps)
+library(glmnet)
+library(splines)
+library(gam)
+
+```
+
+
+<h4>
+Prediction Model for the DAMT Variable
+</h4>
+
+
+
+
+
+```{r}
+
+#Linear Regression Variable Selection
+
+nvmax_var <- 20
+
+# Backward selection model
+# part and ID variables are excluded
+regfit.bwd = regsubsets(damt~. -part -ID, data = data.train, nvmax = nvmax_var, method = "backward")
+
+#Test matrix
+test.mat=model.matrix(damt~. -part -ID, data=data.train)
+
+#Run a for loop to get the cross validation error
+val.errors=rep(NA,nvmax_var) #create a numbered list of x NA's
+
+for(i in 1:nvmax_var){
+  coefi=coef(regfit.bwd,id=i)
+  pred=test.mat[,names(coefi)]%*%coefi
+  val.errors[i]=mean( (data.train$damt - pred)^2 )
+}
+
+best_model <- 18
+
+coef(regfit.bwd,best_model)
+
+mean((predict.regsubsets(regfit.bwd, data.valid,best_model) - data.valid$damt)^2)
+
+```
+
+
+```{r}
+
+#vectorize and standardize data
+
+x=model.matrix(damt~ ., data=data.train.std.y)
+y=data.train.std.y$damt
+x.valid=model.matrix(damt~ ., data=data.valid.std.y)
+y.valid=data.valid.std.y$damt
+
+grid=10^seq(10,-2,length=100)
+
+```
+
+
+```{r}
+
+#Ridge Regression
+
+ridge.mod=glmnet(x,y,alpha=0,lambda=grid)
+cv.out=cv.glmnet(x,y,alpha=0)
+bestlam=cv.out$lambda.min
+bestlam
+ridge.pred=predict(ridge.mod,s=bestlam,newx=x.valid)
+mean((ridge.pred-y.valid)^2)
+
+```
+
+
+```{r}
+
+#Lasso
+
+lasso.mod=glmnet(x,y,alpha=1,lambda=grid)
+cv.out=cv.glmnet(x,y,alpha=1)
+bestlam=cv.out$lambda.min
+bestlam
+lasso.pred=predict(lasso.mod,s=bestlam,newx=x.valid)
+mean((y.valid - lasso.pred)^2)
+
+```
+
+
+```{r}
+
+#Spline
+
+fit <- lm(damt~ reg3 + reg4 + bs(incm_log,knots=c(2,2.3,2.7)) + bs(agif_log,knots=c(2,2.3,2.7)),data=data.train)
+
+pred=predict(fit, newx=x.valid, se=T)
+mean((y.valid - pred$fit)^2)
+
+```
+
+
